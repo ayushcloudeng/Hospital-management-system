@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - HMS</title>
+  <link rel="stylesheet" href="css/dashboard.css">
+  <link rel="stylesheet" href="css/table.css">
+</head>
+
+<body>
+
+  <div class="dashboard">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <h2>HMS Admin</h2>
+      <nav>
+        <a href="#" class="nav-link active" data-section="dashboard">📊 Dashboard</a>
+        <a href="#" class="nav-link" data-section="patients">👥 Patients</a>
+        <a href="#" class="nav-link" data-section="doctors">👨‍⚕️ Doctors</a>
+        <a href="#" class="nav-link" data-section="appointments">📅 Appointments</a>
+      </nav>
+      <div class="sidebar-footer">
+        <a href="index.html" class="logout-btn">🚪 Logout</a>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main">
+      <header class="navbar">
+        <h1 id="pageTitle">Admin Dashboard</h1>
+        <div class="user-info">
+          <span>Admin User</span>
+        </div>
+      </header>
+
+      <div class="content">
+
+        <!-- Dashboard Section -->
+        <section id="dashboard-section" class="section active">
+          <h2>Dashboard Overview</h2>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon">👥</div>
+              <div class="stat-info">
+                <h3 id="totalPatients">0</h3>
+                <p>Total Patients</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">👨‍⚕️</div>
+              <div class="stat-info">
+                <h3 id="totalDoctors">0</h3>
+                <p>Total Doctors</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">📅</div>
+              <div class="stat-info">
+                <h3 id="totalAppointments">0</h3>
+                <p>Total Appointments</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Patients Section -->
+        <section id="patients-section" class="section">
+          <div class="section-header">
+            <h2>Patient Management</h2>
+            <button class="btn btn-primary" onclick="openPatientModal()">+ Add Patient</button>
+          </div>
+
+          <div class="search-box">
+            <input type="text" id="patientSearch" placeholder="🔍 Search patient by name..." onkeyup="searchPatients()">
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Age</th>
+                  <th>Gender</th>
+                  <th>Contact</th>
+                  <th>Email</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="patientTable">
+                <!-- Patients will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Doctors Section -->
+        <section id="doctors-section" class="section">
+          <div class="section-header">
+            <h2>Doctor Management</h2>
+            <button class="btn btn-primary" onclick="openDoctorModal()">+ Add Doctor</button>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Specialization</th>
+                  <th>Contact</th>
+                  <th>Email</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="doctorTable">
+                <!-- Doctors will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Appointments Section -->
+        <section id="appointments-section" class="section">
+          <div class="section-header">
+            <h2>Appointment Management</h2>
+            <button class="btn btn-primary" onclick="openAppointmentModal()">+ Add Appointment</button>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Patient Name</th>
+                  <th>Date</th>
+                  <th>Time</th>
+                  <th>Assigned Doctor</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="appointmentTable">
+                <!-- Appointments will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Patient Modal -->
+  <div id="patientModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="patientModalTitle">Add Patient</h2>
+        <span class="close" onclick="closePatientModal()">&times;</span>
+      </div>
+      <form id="patientForm" onsubmit="savePatient(event)">
+        <input type="hidden" id="patientId">
+        <div class="form-group">
+          <label>Name *</label>
+          <input type="text" id="patientName" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Age *</label>
+            <input type="number" id="patientAge" min="1" max="120" required>
+          </div>
+          <div class="form-group">
+            <label>Gender *</label>
+            <select id="patientGender" required>
+              <option value="">Select</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Contact *</label>
+          <input type="tel" id="patientContact" required>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="patientEmail">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closePatientModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Doctor Modal -->
+  <div id="doctorModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="doctorModalTitle">Add Doctor</h2>
+        <span class="close" onclick="closeDoctorModal()">&times;</span>
+      </div>
+      <form id="doctorForm" onsubmit="saveDoctor(event)">
+        <input type="hidden" id="doctorId">
+        <div class="form-group">
+          <label>Name *</label>
+          <input type="text" id="doctorName" required>
+        </div>
+        <div class="form-group">
+          <label>Specialization *</label>
+          <input type="text" id="doctorSpecialization" required>
+        </div>
+        <div class="form-group">
+          <label>Contact *</label>
+          <input type="tel" id="doctorContact" required>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="doctorEmail">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeDoctorModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Appointment Modal -->
+  <div id="appointmentModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="appointmentModalTitle">Add Appointment</h2>
+        <span class="close" onclick="closeAppointmentModal()">&times;</span>
+      </div>
+      <form id="appointmentForm" onsubmit="saveAppointment(event)">
+        <input type="hidden" id="appointmentId">
+        <div class="form-group">
+          <label>Patient Name *</label>
+          <input type="text" id="appointmentPatient" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date *</label>
+            <input type="date" id="appointmentDate" required>
+          </div>
+          <div class="form-group">
+            <label>Time *</label>
+            <input type="time" id="appointmentTime" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Assign Doctor</label>
+          <select id="appointmentDoctor">
+            <option value="">Not Assigned</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status *</label>
+          <select id="appointmentStatus" required>
+            <option value="Pending">Pending</option>
+            <option value="Approved">Approved</option>
+            <option value="Completed">Completed</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeAppointmentModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+
+</html>
