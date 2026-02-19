@@ -1,0 +1,144 @@
+/* Additional styles for patient dashboard specific components */
+
+/* Booking Form Container */
+.booking-form-container {
+    background: rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    max-width: 600px;
+}
+
+.booking-form-container form {
+    padding: 0;
+}
+
+/* Medical Records List */
+#medicalRecordsList {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.medical-record-card {
+    background: rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    padding: 25px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    transition: all 0.3s ease;
+}
+
+.medical-record-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.record-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.record-date,
+.record-doctor {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: white;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.date-icon,
+.doctor-icon {
+    font-size: 18px;
+}
+
+.record-content {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.record-section {
+    background: rgba(255, 255, 255, 0.6);
+    padding: 15px;
+    border-radius: 12px;
+    border-left: 4px solid #667eea;
+}
+
+.record-section h4 {
+    color: #667eea;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.record-section p {
+    color: #333;
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 0;
+}
+
+.record-footer {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.read-only-badge {
+    background: rgba(102, 126, 234, 0.2);
+    color: #667eea;
+    padding: 6px 12px;
+    border-radius: 15px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid rgba(102, 126, 234, 0.3);
+}
+
+/* Empty States */
+.empty-records {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    padding: 60px 40px;
+    text-align: center;
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+}
+
+.empty-records p {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 16px;
+    margin: 0;
+}
+
+/* Profile Card Customization for Patient */
+.profile-card .profile-avatar {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .record-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .booking-form-container {
+        padding: 20px;
+    }
+}
