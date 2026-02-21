@@ -1,187 +1,306 @@
-// Check authentication
+// ==================== AUTH GUARD ====================
 if (!API.isAuthenticated()) {
   window.location.href = 'index.html';
+  throw new Error('Not authenticated');
 }
 
-// Get current user
 let currentUser = API.getCurrentUser();
 
-// Verify admin role
-if (currentUser.role !== 'admin') {
+if (!currentUser || currentUser.role !== 'admin') {
   alert('Access denied. Admin only.');
-  API.auth.logout();
+  API.clearAuth();
+  window.location.href = 'index.html';
+  throw new Error('Not an admin');
 }
 
-// Navigation
+// ==================== INIT ====================
+
+// Show admin name in header
+const adminNameEl = document.getElementById('adminName');
+if (adminNameEl) adminNameEl.textContent = currentUser.name;
+
+// ==================== NAVIGATION ====================
+
 const navLinks = document.querySelectorAll('.nav-link');
 const sections = document.querySelectorAll('.section');
 
 navLinks.forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
-    const targetSection = link.getAttribute('data-section');
+    const target = link.getAttribute('data-section');
 
     navLinks.forEach(l => l.classList.remove('active'));
     link.classList.add('active');
 
     sections.forEach(s => s.classList.remove('active'));
-    document.getElementById(targetSection).classList.add('active');
+    // admin.html uses IDs like 'dashboard-section', 'patients-section', etc.
+    const el = document.getElementById(target + '-section') || document.getElementById(target);
+    if (el) el.classList.add('active');
 
-    // Load data for the section
-    if (targetSection === 'patients') loadPatients();
-    if (targetSection === 'doctors') loadDoctors();
-    if (targetSection === 'appointments') loadAppointments();
+    // Update page title
+    const titleEl = document.getElementById('pageTitle');
+    if (titleEl) {
+      const titles = { dashboard: 'Admin Dashboard', patients: 'Patient Management', doctors: 'Doctor Management', appointments: 'Appointment Management' };
+      titleEl.textContent = titles[target] || 'Admin Dashboard';
+    }
+
+    if (target === 'patients') loadPatients();
+    if (target === 'doctors') loadDoctors();
+    if (target === 'appointments') loadAppointments();
   });
 });
 
-// Logout
-document.getElementById('logoutBtn')?.addEventListener('click', () => {
+// Logout — clear localStorage and redirect
+document.querySelector('.logout-btn')?.addEventListener('click', (e) => {
+  e.preventDefault();
   if (confirm('Are you sure you want to logout?')) {
-    API.auth.logout();
+    API.clearAuth();
+    window.location.href = 'index.html';
+  }
+});
+
+// Fallback: also intercept the <a href="index.html"> logout link
+document.querySelector('a[href="index.html"].logout-btn')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  API.clearAuth();
+  window.location.href = 'index.html';
+});
+
+// ==================== MODAL HELPERS ====================
+
+function openPatientModal(patient = null) {
+  document.getElementById('patientModalTitle').textContent = patient ? 'Edit Patient' : 'Add Patient';
+  document.getElementById('patientId').value = patient ? patient._id : '';
+  document.getElementById('patientName').value = patient ? patient.name : '';
+  document.getElementById('patientAge').value = patient ? patient.age || '' : '';
+  document.getElementById('patientGender').value = patient ? patient.gender || '' : '';
+  document.getElementById('patientContact').value = patient ? patient.contact || '' : '';
+  document.getElementById('patientEmail').value = patient ? patient.email : '';
+  document.getElementById('patientModal').style.display = 'flex';
+}
+
+function closePatientModal() {
+  document.getElementById('patientModal').style.display = 'none';
+  document.getElementById('patientForm').reset();
+}
+
+function openDoctorModal(doctor = null) {
+  document.getElementById('doctorModalTitle').textContent = doctor ? 'Edit Doctor' : 'Add Doctor';
+  document.getElementById('doctorId').value = doctor ? doctor._id : '';
+  document.getElementById('doctorName').value = doctor ? doctor.name : '';
+  document.getElementById('doctorSpecialization').value = doctor ? doctor.specialization || '' : '';
+  document.getElementById('doctorContact').value = doctor ? doctor.contact || '' : '';
+  document.getElementById('doctorEmail').value = doctor ? doctor.email : '';
+  document.getElementById('doctorModal').style.display = 'flex';
+}
+
+function closeDoctorModal() {
+  document.getElementById('doctorModal').style.display = 'none';
+  document.getElementById('doctorForm').reset();
+}
+
+async function openAppointmentModal(appointment = null) {
+  document.getElementById('appointmentModalTitle').textContent = appointment ? 'Edit Appointment' : 'Add Appointment';
+  document.getElementById('appointmentId').value = appointment ? appointment._id : '';
+  document.getElementById('appointmentPatient').value = appointment ? appointment.patientName || '' : '';
+  document.getElementById('appointmentDate').value = appointment ? appointment.date?.substring(0, 10) : '';
+  document.getElementById('appointmentTime').value = appointment ? appointment.time || '' : '';
+  document.getElementById('appointmentStatus').value = appointment ? appointment.status || 'Pending' : 'Pending';
+
+  // Load doctors for the dropdown
+  await loadDoctorsForSelect(appointment?.doctor?._id);
+  document.getElementById('appointmentModal').style.display = 'flex';
+}
+
+function closeAppointmentModal() {
+  document.getElementById('appointmentModal').style.display = 'none';
+  document.getElementById('appointmentForm').reset();
+}
+
+async function loadDoctorsForSelect(selectedId = null) {
+  try {
+    const doctors = await API.users.getAll('doctor');
+    const select = document.getElementById('appointmentDoctor');
+    select.innerHTML = '<option value="">Not Assigned</option>';
+    doctors.forEach(d => {
+      const opt = `<option value="${d._id}" ${selectedId === d._id ? 'selected' : ''}>${d.name} - ${d.specialization || 'General'}</option>`;
+      select.innerHTML += opt;
+    });
+  } catch (e) {
+    console.error('Error loading doctors for select:', e);
+  }
+}
+
+// Close modals on outside click
+window.addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal')) {
+    e.target.style.display = 'none';
   }
 });
 
 // ==================== PATIENTS ====================
 
+let allPatients = [];
+
 async function loadPatients() {
   try {
-    const patients = await API.users.getAll('patient');
-    displayPatients(patients);
+    allPatients = await API.users.getAll('patient');
+    renderPatients(allPatients);
     updateStats();
   } catch (error) {
     console.error('Error loading patients:', error);
-    alert('Failed to load patients: ' + error.message);
   }
 }
 
-function displayPatients(patients) {
-  const tbody = document.querySelector('#patientsTable tbody');
+function renderPatients(patients) {
+  const tbody = document.getElementById('patientTable');
+  if (!tbody) return;
   tbody.innerHTML = '';
 
-  patients.forEach(patient => {
-    const row = `
+  if (patients.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#888;">No patients found</td></tr>';
+    return;
+  }
+
+  patients.forEach(p => {
+    tbody.innerHTML += `
       <tr>
-        <td>${patient.name}</td>
-        <td>${patient.email}</td>
-        <td>${patient.age || 'N/A'}</td>
-        <td>${patient.gender || 'N/A'}</td>
-        <td>${patient.contact || 'N/A'}</td>
+        <td title="${p._id}">${p._id.toString().slice(-6)}</td>
+        <td>${p.name}</td>
+        <td>${p.age || 'N/A'}</td>
+        <td>${p.gender || 'N/A'}</td>
+        <td>${p.contact || 'N/A'}</td>
+        <td>${p.email}</td>
         <td>
-          <button class="btn btn-sm btn-primary" onclick="editPatient('${patient._id}')">Edit</button>
-          <button class="btn btn-sm btn-danger" onclick="deletePatient('${patient._id}')">Delete</button>
+          <button class="btn btn-sm btn-primary" onclick='openPatientModal(${JSON.stringify(p)})'>Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deletePatient('${p._id}')">Delete</button>
         </td>
-      </tr>
-    `;
-    tbody.innerHTML += row;
+      </tr>`;
   });
 }
 
-// Add Patient
 document.getElementById('patientForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-
-  const patientData = {
+  const id = document.getElementById('patientId').value;
+  const data = {
     name: document.getElementById('patientName').value,
+    age: parseInt(document.getElementById('patientAge').value) || undefined,
+    gender: document.getElementById('patientGender').value || undefined,
+    contact: document.getElementById('patientContact').value || undefined,
     email: document.getElementById('patientEmail').value,
-    password: document.getElementById('patientPassword').value || 'password123',
     role: 'patient',
-    age: parseInt(document.getElementById('patientAge').value),
-    gender: document.getElementById('patientGender').value,
-    contact: document.getElementById('patientContact').value,
+    password: 'password123', // default for admin-created accounts
   };
 
   try {
-    await API.auth.register(patientData);
-    alert('Patient added successfully!');
-    document.getElementById('addPatientModal').style.display = 'none';
-    e.target.reset();
+    if (id) {
+      await API.users.update(id, data);
+      alert('Patient updated!');
+    } else {
+      await API.auth.register(data);
+      alert('Patient added!');
+    }
+    closePatientModal();
     loadPatients();
-  } catch (error) {
-    alert('Failed to add patient: ' + error.message);
+  } catch (err) {
+    alert('Failed: ' + err.message);
   }
 });
 
-// Delete Patient
 async function deletePatient(id) {
-  if (!confirm('Are you sure you want to delete this patient?')) return;
-
+  if (!confirm('Delete this patient?')) return;
   try {
     await API.users.delete(id);
-    alert('Patient deleted successfully!');
+    alert('Patient deleted!');
     loadPatients();
-  } catch (error) {
-    alert('Failed to delete patient: ' + error.message);
+  } catch (err) {
+    alert('Failed: ' + err.message);
   }
+}
+
+function searchPatients() {
+  const term = document.getElementById('patientSearch').value.toLowerCase();
+  const filtered = allPatients.filter(p =>
+    p.name.toLowerCase().includes(term) || p.email.toLowerCase().includes(term)
+  );
+  renderPatients(filtered);
 }
 
 // ==================== DOCTORS ====================
 
+let allDoctors = [];
+
 async function loadDoctors() {
   try {
-    const doctors = await API.users.getAll('doctor');
-    displayDoctors(doctors);
+    allDoctors = await API.users.getAll('doctor');
+    renderDoctors(allDoctors);
     updateStats();
   } catch (error) {
     console.error('Error loading doctors:', error);
-    alert('Failed to load doctors: ' + error.message);
   }
 }
 
-function displayDoctors(doctors) {
-  const tbody = document.querySelector('#doctorsTable tbody');
+function renderDoctors(doctors) {
+  const tbody = document.getElementById('doctorTable');
+  if (!tbody) return;
   tbody.innerHTML = '';
 
-  doctors.forEach(doctor => {
-    const row = `
+  if (doctors.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888;">No doctors found</td></tr>';
+    return;
+  }
+
+  doctors.forEach(d => {
+    tbody.innerHTML += `
       <tr>
-        <td>${doctor.name}</td>
-        <td>${doctor.email}</td>
-        <td>${doctor.specialization || 'N/A'}</td>
-        <td>${doctor.contact || 'N/A'}</td>
+        <td title="${d._id}">${d._id.toString().slice(-6)}</td>
+        <td>${d.name}</td>
+        <td>${d.specialization || 'N/A'}</td>
+        <td>${d.contact || 'N/A'}</td>
+        <td>${d.email}</td>
         <td>
-          <button class="btn btn-sm btn-primary" onclick="editDoctor('${doctor._id}')">Edit</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteDoctor('${doctor._id}')">Delete</button>
+          <button class="btn btn-sm btn-primary" onclick='openDoctorModal(${JSON.stringify(d)})'>Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteDoctor('${d._id}')">Delete</button>
         </td>
-      </tr>
-    `;
-    tbody.innerHTML += row;
+      </tr>`;
   });
 }
 
-// Add Doctor
 document.getElementById('doctorForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-
-  const doctorData = {
+  const id = document.getElementById('doctorId').value;
+  const data = {
     name: document.getElementById('doctorName').value,
-    email: document.getElementById('doctorEmail').value,
-    password: document.getElementById('doctorPassword').value || 'password123',
-    role: 'doctor',
     specialization: document.getElementById('doctorSpecialization').value,
-    contact: document.getElementById('doctorContact').value,
+    contact: document.getElementById('doctorContact').value || undefined,
+    email: document.getElementById('doctorEmail').value,
+    role: 'doctor',
+    password: 'password123',
   };
 
   try {
-    await API.auth.register(doctorData);
-    alert('Doctor added successfully!');
-    document.getElementById('addDoctorModal').style.display = 'none';
-    e.target.reset();
+    if (id) {
+      await API.users.update(id, data);
+      alert('Doctor updated!');
+    } else {
+      await API.auth.register(data);
+      alert('Doctor added!');
+    }
+    closeDoctorModal();
     loadDoctors();
-  } catch (error) {
-    alert('Failed to add doctor: ' + error.message);
+  } catch (err) {
+    alert('Failed: ' + err.message);
   }
 });
 
-// Delete Doctor
 async function deleteDoctor(id) {
-  if (!confirm('Are you sure you want to delete this doctor?')) return;
-
+  if (!confirm('Delete this doctor?')) return;
   try {
     await API.users.delete(id);
-    alert('Doctor deleted successfully!');
+    alert('Doctor deleted!');
     loadDoctors();
-  } catch (error) {
-    alert('Failed to delete doctor: ' + error.message);
+  } catch (err) {
+    alert('Failed: ' + err.message);
   }
 }
 
@@ -190,120 +309,97 @@ async function deleteDoctor(id) {
 async function loadAppointments() {
   try {
     const appointments = await API.appointments.getAll();
-    displayAppointments(appointments);
-    updateStats();
+    renderAppointments(appointments);
+    updateStats(null, null, appointments);
   } catch (error) {
     console.error('Error loading appointments:', error);
-    alert('Failed to load appointments: ' + error.message);
   }
 }
 
-function displayAppointments(appointments) {
-  const tbody = document.querySelector('#appointmentsTable tbody');
+function renderAppointments(appointments) {
+  const tbody = document.getElementById('appointmentTable');
+  if (!tbody) return;
   tbody.innerHTML = '';
 
-  appointments.forEach(appointment => {
-    const row = `
+  if (appointments.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#888;">No appointments found</td></tr>';
+    return;
+  }
+
+  appointments.forEach(a => {
+    tbody.innerHTML += `
       <tr>
-        <td>${appointment.patientName || 'N/A'}</td>
-        <td>${appointment.doctorName || 'Unassigned'}</td>
-        <td>${new Date(appointment.date).toLocaleDateString()}</td>
-        <td>${appointment.time}</td>
-        <td><span class="status-badge status-${appointment.status.toLowerCase()}">${appointment.status}</span></td>
+        <td title="${a._id}">${a._id.toString().slice(-6)}</td>
+        <td>${a.patientName || 'N/A'}</td>
+        <td>${new Date(a.date).toLocaleDateString()}</td>
+        <td>${a.time || 'N/A'}</td>
+        <td>${a.doctorName || 'Unassigned'}</td>
+        <td><span class="status-badge status-${(a.status || '').toLowerCase()}">${a.status || 'N/A'}</span></td>
         <td>
-          <button class="btn btn-sm btn-primary" onclick="editAppointment('${appointment._id}')">Edit</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteAppointment('${appointment._id}')">Delete</button>
+          <button class="btn btn-sm btn-primary" onclick='openAppointmentModal(${JSON.stringify(a).replace(/'/g, "\\'")})'>Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteAppointment('${a._id}')">Delete</button>
         </td>
-      </tr>
-    `;
-    tbody.innerHTML += row;
+      </tr>`;
   });
 }
 
-// Delete Appointment
-async function deleteAppointment(id) {
-  if (!confirm('Are you sure you want to delete this appointment?')) return;
+document.getElementById('appointmentForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = document.getElementById('appointmentId').value;
+  const data = {
+    patientName: document.getElementById('appointmentPatient').value,
+    date: document.getElementById('appointmentDate').value,
+    time: document.getElementById('appointmentTime').value,
+    doctor: document.getElementById('appointmentDoctor').value || undefined,
+    status: document.getElementById('appointmentStatus').value,
+  };
 
+  try {
+    if (id) {
+      await API.appointments.update(id, data);
+      alert('Appointment updated!');
+    } else {
+      await API.appointments.create(data);
+      alert('Appointment added!');
+    }
+    closeAppointmentModal();
+    loadAppointments();
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+});
+
+async function deleteAppointment(id) {
+  if (!confirm('Delete this appointment?')) return;
   try {
     await API.appointments.delete(id);
-    alert('Appointment deleted successfully!');
+    alert('Appointment deleted!');
     loadAppointments();
-  } catch (error) {
-    alert('Failed to delete appointment: ' + error.message);
+  } catch (err) {
+    alert('Failed: ' + err.message);
   }
 }
 
-// ==================== STATISTICS ====================
+// ==================== STATS ====================
 
-async function updateStats() {
+async function updateStats(patients, doctors, appointments) {
   try {
-    const [patients, doctors, appointments] = await Promise.all([
-      API.users.getAll('patient'),
-      API.users.getAll('doctor'),
-      API.appointments.getAll()
+    const [p, d, a] = await Promise.all([
+      patients ? Promise.resolve(patients) : API.users.getAll('patient'),
+      doctors ? Promise.resolve(doctors) : API.users.getAll('doctor'),
+      appointments ? Promise.resolve(appointments) : API.appointments.getAll(),
     ]);
-
-    document.getElementById('totalPatients').textContent = patients.length;
-    document.getElementById('totalDoctors').textContent = doctors.length;
-    document.getElementById('totalAppointments').textContent = appointments.length;
-
-    const pendingAppointments = appointments.filter(a => a.status === 'Pending').length;
-    document.getElementById('pendingAppointments').textContent = pendingAppointments;
-  } catch (error) {
-    console.error('Error updating stats:', error);
+    const totalPatientsEl = document.getElementById('totalPatients');
+    const totalDoctorsEl = document.getElementById('totalDoctors');
+    const totalAppointmentsEl = document.getElementById('totalAppointments');
+    if (totalPatientsEl) totalPatientsEl.textContent = p.length;
+    if (totalDoctorsEl) totalDoctorsEl.textContent = d.length;
+    if (totalAppointmentsEl) totalAppointmentsEl.textContent = a.length;
+  } catch (err) {
+    console.error('Error updating stats:', err);
   }
 }
 
-// ==================== MODALS ====================
-
-// Open Add Patient Modal
-document.getElementById('addPatientBtn')?.addEventListener('click', () => {
-  document.getElementById('addPatientModal').style.display = 'flex';
-});
-
-// Open Add Doctor Modal
-document.getElementById('addDoctorBtn')?.addEventListener('click', () => {
-  document.getElementById('addDoctorModal').style.display = 'flex';
-});
-
-// Close Modals
-document.querySelectorAll('.close-modal').forEach(btn => {
-  btn.addEventListener('click', (e) => {
-    e.target.closest('.modal').style.display = 'none';
-  });
-});
-
-// Close modal on outside click
-window.addEventListener('click', (e) => {
-  if (e.target.classList.contains('modal')) {
-    e.target.style.display = 'none';
-  }
-});
-
-// ==================== SEARCH ====================
-
-document.getElementById('searchPatients')?.addEventListener('input', async (e) => {
-  const searchTerm = e.target.value.toLowerCase();
-  const patients = await API.users.getAll('patient');
-  const filtered = patients.filter(p =>
-    p.name.toLowerCase().includes(searchTerm) ||
-    p.email.toLowerCase().includes(searchTerm)
-  );
-  displayPatients(filtered);
-});
-
-document.getElementById('searchDoctors')?.addEventListener('input', async (e) => {
-  const searchTerm = e.target.value.toLowerCase();
-  const doctors = await API.users.getAll('doctor');
-  const filtered = doctors.filter(d =>
-    d.name.toLowerCase().includes(searchTerm) ||
-    d.specialization?.toLowerCase().includes(searchTerm)
-  );
-  displayDoctors(filtered);
-});
-
-// ==================== INITIALIZATION ====================
-
-// Load initial data
+// ==================== START ====================
 updateStats();
 loadPatients();

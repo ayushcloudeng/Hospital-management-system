@@ -1,40 +1,62 @@
-// Check authentication
+// ==================== AUTH GUARD ====================
 if (!API.isAuthenticated()) {
   window.location.href = 'index.html';
+  throw new Error('Not authenticated');
 }
 
-// Get current user
-let currentUser = null;
+// Get current user from localStorage (no network call needed)
+let currentUser = API.getCurrentUser();
+
+if (!currentUser || currentUser.role !== 'patient') {
+  alert('Access denied. Patient only.');
+  API.clearAuth();
+  window.location.href = 'index.html';
+  throw new Error('Not a patient');
+}
+
+// ==================== INIT ====================
 
 async function initPatient() {
+  // Try to get fresh user data from backend (ensures age/gender/contact are populated)
   try {
-    currentUser = await API.auth.getMe();
-
-    // Verify patient role
-    if (currentUser.role !== 'patient') {
-      alert('Access denied. Patient only.');
-      API.auth.logout();
-      return;
+    const freshUser = await API.auth.getMe();
+    if (freshUser && freshUser._id) {
+      // Merge fresh data with token from localStorage
+      currentUser = { ...currentUser, ...freshUser };
+      // Update localStorage with full profile
+      const token = localStorage.getItem('token');
+      localStorage.setItem('user', JSON.stringify({ ...currentUser, token }));
     }
-
-    // Display patient info
-    document.getElementById('patientName').textContent = currentUser.name;
-    document.getElementById('patientEmail').textContent = currentUser.email;
-    document.getElementById('patientAge').textContent = currentUser.age || 'N/A';
-    document.getElementById('patientGender').textContent = currentUser.gender || 'N/A';
-
-    // Load data
-    await loadDoctors();
-    await loadAppointments();
-    await loadMedicalRecords();
-  } catch (error) {
-    console.error('Error initializing patient dashboard:', error);
-    alert('Failed to load dashboard. Please try again.');
-    API.auth.logout();
+  } catch (e) {
+    console.warn('Could not refresh user from backend, using cached data:', e.message);
   }
+
+  // Display patient profile info
+  const nameEl = document.getElementById('patientName');
+  const profileNameEl = document.getElementById('profileName');
+  const profileDetailsEl = document.getElementById('profileDetails');
+  const profileContactEl = document.getElementById('profileContact');
+
+  if (nameEl) nameEl.textContent = currentUser.name || 'User';
+  if (profileNameEl) profileNameEl.textContent = currentUser.name || 'User';
+  if (profileDetailsEl) {
+    const agePart = currentUser.age ? `Age: ${currentUser.age}` : 'Age: N/A';
+    const genderPart = currentUser.gender ? ` | Gender: ${currentUser.gender}` : '';
+    profileDetailsEl.textContent = agePart + genderPart;
+  }
+  if (profileContactEl) {
+    const contactPart = currentUser.contact ? `📞 ${currentUser.contact} | ` : '';
+    profileContactEl.textContent = `${contactPart}✉️ ${currentUser.email}`;
+  }
+
+  // Load data from backend
+  loadDoctors();
+  loadAppointments();
+  loadMedicalRecords();
 }
 
-// Navigation
+// ==================== NAVIGATION ====================
+
 const navLinks = document.querySelectorAll('.nav-link');
 const sections = document.querySelectorAll('.section');
 
@@ -47,14 +69,17 @@ navLinks.forEach(link => {
     link.classList.add('active');
 
     sections.forEach(s => s.classList.remove('active'));
-    document.getElementById(targetSection).classList.add('active');
+    // patient.html uses IDs like 'dashboard-section', 'book-section', etc.
+    const sectionEl = document.getElementById(targetSection + '-section') || document.getElementById(targetSection);
+    if (sectionEl) sectionEl.classList.add('active');
   });
 });
 
 // Logout
 document.getElementById('logoutBtn')?.addEventListener('click', () => {
   if (confirm('Are you sure you want to logout?')) {
-    API.auth.logout();
+    API.clearAuth();
+    window.location.href = 'index.html';
   }
 });
 
@@ -63,9 +88,10 @@ document.getElementById('logoutBtn')?.addEventListener('click', () => {
 async function loadDoctors() {
   try {
     const doctors = await API.users.getAll('doctor');
-    const select = document.getElementById('appointmentDoctor');
-    select.innerHTML = '<option value="">Select Doctor</option>';
-
+    // patient.html uses 'bookDoctor' for the book appointment select
+    const select = document.getElementById('bookDoctor') || document.getElementById('appointmentDoctor');
+    if (!select) return;
+    select.innerHTML = '<option value="">Choose a doctor...</option>';
     doctors.forEach(doctor => {
       select.innerHTML += `<option value="${doctor._id}">${doctor.name} - ${doctor.specialization || 'General'}</option>`;
     });
@@ -74,14 +100,14 @@ async function loadDoctors() {
   }
 }
 
-document.getElementById('appointmentForm')?.addEventListener('submit', async (e) => {
+document.getElementById('bookingForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
 
   const appointmentData = {
-    doctor: document.getElementById('appointmentDoctor').value,
-    date: document.getElementById('appointmentDate').value,
-    time: document.getElementById('appointmentTime').value,
-    reason: document.getElementById('appointmentReason').value,
+    doctor: document.getElementById('bookDoctor').value,
+    date: document.getElementById('bookDate').value,
+    time: document.getElementById('bookTime').value,
+    reason: document.getElementById('bookReason').value,
   };
 
   try {
@@ -99,69 +125,82 @@ document.getElementById('appointmentForm')?.addEventListener('submit', async (e)
 async function loadAppointments() {
   try {
     const appointments = await API.appointments.getAll();
-
-    // Upcoming appointments
     const now = new Date();
     const upcoming = appointments.filter(a => new Date(a.date) >= now);
 
     displayUpcomingAppointments(upcoming);
     displayAllAppointments(appointments);
 
-    // Update stats
-    document.getElementById('upcomingAppointmentsCount').textContent = upcoming.length;
-    document.getElementById('totalAppointmentsCount').textContent = appointments.length;
+    // patient.html uses 'upcomingCount' and 'totalAppointments'
+    const upcomingEl = document.getElementById('upcomingCount') || document.getElementById('upcomingAppointmentsCount');
+    const totalEl = document.getElementById('totalAppointments') || document.getElementById('totalAppointmentsCount');
+    if (upcomingEl) upcomingEl.textContent = upcoming.length;
+    if (totalEl) totalEl.textContent = appointments.length;
   } catch (error) {
     console.error('Error loading appointments:', error);
   }
 }
 
 function displayUpcomingAppointments(appointments) {
-  const container = document.getElementById('upcomingAppointmentsContainer');
-  container.innerHTML = '';
+  // patient.html uses 'upcomingAppointmentsTable' tbody
+  const container = document.getElementById('upcomingAppointmentsTable') || document.getElementById('upcomingAppointmentsContainer');
+  if (!container) return;
 
-  if (appointments.length === 0) {
-    container.innerHTML = '<p style="text-align:center;color:#666;">No upcoming appointments</p>';
-    return;
+  // If it's a tbody, insert rows; otherwise insert cards
+  if (container.tagName === 'TBODY') {
+    container.innerHTML = '';
+    if (appointments.length === 0) {
+      container.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#888;">No upcoming appointments</td></tr>';
+      return;
+    }
+    appointments.forEach(a => {
+      container.innerHTML += `
+        <tr>
+          <td>${new Date(a.date).toLocaleDateString()}</td>
+          <td>${a.time || 'N/A'}</td>
+          <td>${a.doctorName || 'Unassigned'}</td>
+          <td><span class="status-badge status-${(a.status || '').toLowerCase()}">${a.status || 'N/A'}</span></td>
+        </tr>`;
+    });
+  } else {
+    container.innerHTML = '';
+    if (appointments.length === 0) {
+      container.innerHTML = '<p style="text-align:center;color:#888;padding:20px;">No upcoming appointments</p>';
+      return;
+    }
+    appointments.forEach(a => {
+      container.innerHTML += `
+        <div style="background:#fff;border-radius:10px;padding:15px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <strong>${a.doctorName || 'Doctor'}</strong>
+          <span style="float:right;" class="status-badge status-${(a.status || '').toLowerCase()}">${a.status}</span>
+          <p style="margin:5px 0 0;">📅 ${new Date(a.date).toLocaleDateString()} at ${a.time || 'N/A'}</p>
+          ${a.reason ? `<p style="color:#666;">Reason: ${a.reason}</p>` : ''}
+        </div>`;
+    });
   }
-
-  appointments.forEach(appointment => {
-    const card = `
-      <div class="appointment-card">
-        <div class="appointment-header">
-          <h4>${appointment.doctorName || 'Doctor not assigned'}</h4>
-          <span class="status-badge status-${appointment.status.toLowerCase()}">${appointment.status}</span>
-        </div>
-        <div class="appointment-body">
-          <p><strong>Date:</strong> ${new Date(appointment.date).toLocaleDateString()}</p>
-          <p><strong>Time:</strong> ${appointment.time}</p>
-          <p><strong>Reason:</strong> ${appointment.reason || 'N/A'}</p>
-        </div>
-      </div>
-    `;
-    container.innerHTML += card;
-  });
 }
 
 function displayAllAppointments(appointments) {
-  const tbody = document.querySelector('#allAppointmentsTable tbody');
+  // patient.html uses 'appointmentsTable' tbody
+  const el = document.getElementById('appointmentsTable') || document.getElementById('allAppointmentsTable');
+  const tbody = el ? (el.tagName === 'TBODY' ? el : el.querySelector('tbody')) : null;
+  if (!tbody) return;
   tbody.innerHTML = '';
 
   if (appointments.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No appointments found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888;">No appointments found</td></tr>';
     return;
   }
 
-  appointments.forEach(appointment => {
-    const row = `
+  appointments.forEach(a => {
+    tbody.innerHTML += `
       <tr>
-        <td>${appointment.doctorName || 'Unassigned'}</td>
-        <td>${new Date(appointment.date).toLocaleDateString()}</td>
-        <td>${appointment.time}</td>
-        <td>${appointment.reason || 'N/A'}</td>
-        <td><span class="status-badge status-${appointment.status.toLowerCase()}">${appointment.status}</span></td>
-      </tr>
-    `;
-    tbody.innerHTML += row;
+        <td>${a._id ? a._id.toString().slice(-6) : 'N/A'}</td>
+        <td>${new Date(a.date).toLocaleDateString()}</td>
+        <td>${a.time || 'N/A'}</td>
+        <td>${a.doctorName || 'Unassigned'}</td>
+        <td><span class="status-badge status-${(a.status || '').toLowerCase()}">${a.status || 'N/A'}</span></td>
+      </tr>`;
   });
 }
 
@@ -172,41 +211,37 @@ async function loadMedicalRecords() {
     const records = await API.medicalRecords.getAll();
     displayMedicalRecords(records);
 
-    // Update stats
-    document.getElementById('medicalRecordsCount').textContent = records.length;
+    const countEl = document.getElementById('medicalRecordsCount');
+    if (countEl) countEl.textContent = records.length;
   } catch (error) {
     console.error('Error loading medical records:', error);
   }
 }
 
 function displayMedicalRecords(records) {
-  const container = document.getElementById('medicalRecordsContainer');
+  // patient.html uses 'medicalRecordsList'
+  const container = document.getElementById('medicalRecordsList') || document.getElementById('medicalRecordsContainer');
+  if (!container) return;
   container.innerHTML = '';
 
   if (records.length === 0) {
-    container.innerHTML = '<p style="text-align:center;color:#666;">No medical records found</p>';
+    container.innerHTML = '<p style="text-align:center;color:#888;padding:20px;">No medical records found</p>';
     return;
   }
 
   records.forEach(record => {
-    const card = `
-      <div class="record-card">
-        <div class="record-header">
-          <h4>Dr. ${record.doctorName}</h4>
-          <span class="record-date">${new Date(record.visitDate).toLocaleDateString()}</span>
+    container.innerHTML += `
+      <div style="background:#fff;border-radius:10px;padding:20px;margin-bottom:15px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+          <h4 style="margin:0;">Dr. ${record.doctorName || 'Unknown'}</h4>
+          <span style="color:#888;font-size:0.9em;">${new Date(record.visitDate || record.createdAt).toLocaleDateString()}</span>
         </div>
-        <div class="record-body">
-          <p><strong>Diagnosis:</strong> ${record.diagnosis}</p>
-          <p><strong>Prescription:</strong> ${record.prescription}</p>
-          ${record.notes ? `<p><strong>Doctor's Notes:</strong> ${record.notes}</p>` : ''}
-        </div>
-        <div class="record-badge">Read Only</div>
-      </div>
-    `;
-    container.innerHTML += card;
+        <p><strong>Diagnosis:</strong> ${record.diagnosis || 'N/A'}</p>
+        <p><strong>Prescription:</strong> ${record.prescription || 'N/A'}</p>
+        ${record.notes ? `<p><strong>Doctor's Notes:</strong> ${record.notes}</p>` : ''}
+      </div>`;
   });
 }
 
-// ==================== INITIALIZATION ====================
-
+// ==================== START ====================
 initPatient();

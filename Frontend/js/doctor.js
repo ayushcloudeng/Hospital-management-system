@@ -1,38 +1,52 @@
-// Check authentication
+// ==================== AUTH GUARD ====================
 if (!API.isAuthenticated()) {
   window.location.href = 'index.html';
+  throw new Error('Not authenticated');
 }
 
-// Get current user
-let currentUser = null;
+// Get current user from localStorage (no network call needed)
+let currentUser = API.getCurrentUser();
+
+if (!currentUser || currentUser.role !== 'doctor') {
+  alert('Access denied. Doctor only.');
+  API.clearAuth();
+  window.location.href = 'index.html';
+  throw new Error('Not a doctor');
+}
+
+// ==================== INIT ====================
 
 async function initDoctor() {
+  // Fetch fresh profile from backend to get specialization/contact
   try {
-    currentUser = await API.auth.getMe();
-
-    // Verify doctor role
-    if (currentUser.role !== 'doctor') {
-      alert('Access denied. Doctor only.');
-      API.auth.logout();
-      return;
+    const freshUser = await API.auth.getMe();
+    if (freshUser && freshUser._id) {
+      currentUser = { ...currentUser, ...freshUser };
+      const token = localStorage.getItem('token');
+      localStorage.setItem('user', JSON.stringify({ ...currentUser, token }));
     }
-
-    // Display doctor info
-    document.getElementById('doctorName').textContent = currentUser.name;
-    document.getElementById('doctorSpecialization').textContent = currentUser.specialization || 'General';
-    document.getElementById('doctorEmail').textContent = currentUser.email;
-
-    // Load data
-    await loadAppointments();
-    await loadPatientRecords();
-  } catch (error) {
-    console.error('Error initializing doctor dashboard:', error);
-    alert('Failed to load dashboard. Please try again.');
-    API.auth.logout();
+  } catch (e) {
+    console.warn('Could not refresh doctor profile, using cached data:', e.message);
   }
+
+  // Display doctor info
+  const nameEl = document.getElementById('doctorName');
+  const profileNameEl = document.getElementById('profileName');
+  const profileSpecEl = document.getElementById('profileSpecialization');
+  const profileContactEl = document.getElementById('profileContact');
+
+  if (nameEl) nameEl.textContent = currentUser.name || 'Doctor';
+  if (profileNameEl) profileNameEl.textContent = currentUser.name || 'Doctor';
+  if (profileSpecEl) profileSpecEl.textContent = currentUser.specialization || 'General Medicine';
+  if (profileContactEl) profileContactEl.textContent = '✉️ ' + currentUser.email;
+
+  // Load data from backend
+  loadAppointments();
+  loadPatientRecords();
 }
 
-// Navigation
+// ==================== NAVIGATION ====================
+
 const navLinks = document.querySelectorAll('.nav-link');
 const sections = document.querySelectorAll('.section');
 
@@ -45,14 +59,16 @@ navLinks.forEach(link => {
     link.classList.add('active');
 
     sections.forEach(s => s.classList.remove('active'));
-    document.getElementById(targetSection).classList.add('active');
+    const sectionEl = document.getElementById(targetSection);
+    if (sectionEl) sectionEl.classList.add('active');
   });
 });
 
 // Logout
 document.getElementById('logoutBtn')?.addEventListener('click', () => {
   if (confirm('Are you sure you want to logout?')) {
-    API.auth.logout();
+    API.clearAuth();
+    window.location.href = 'index.html';
   }
 });
 
@@ -67,38 +83,41 @@ async function loadAppointments() {
 
     // Today's appointments
     const today = new Date().toDateString();
-    const todayAppointments = myAppointments.filter(a =>
+    const todayAppts = myAppointments.filter(a =>
       new Date(a.date).toDateString() === today
     );
 
-    displayTodayAppointments(todayAppointments);
+    displayTodayAppointments(todayAppts);
     displayAllAppointments(myAppointments);
 
     // Update stats
-    document.getElementById('todayAppointmentsCount').textContent = todayAppointments.length;
-    document.getElementById('totalAppointmentsCount').textContent = myAppointments.length;
+    const todayCountEl = document.getElementById('todayAppointmentsCount');
+    const totalCountEl = document.getElementById('totalAppointmentsCount');
+    if (todayCountEl) todayCountEl.textContent = todayAppts.length;
+    if (totalCountEl) totalCountEl.textContent = myAppointments.length;
   } catch (error) {
     console.error('Error loading appointments:', error);
-    alert('Failed to load appointments');
   }
 }
 
 function displayTodayAppointments(appointments) {
-  const tbody = document.querySelector('#todayAppointmentsTable tbody');
+  const container = document.getElementById('todayAppointmentsTable');
+  const tbody = container ? container.querySelector('tbody') : null;
+  if (!tbody) return;
   tbody.innerHTML = '';
 
   if (appointments.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No appointments today</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#888;">No appointments today</td></tr>';
     return;
   }
 
   appointments.forEach(appointment => {
     const row = `
       <tr>
-        <td>${appointment.patientName}</td>
-        <td>${appointment.time}</td>
+        <td>${appointment.patientName || 'N/A'}</td>
+        <td>${appointment.time || 'N/A'}</td>
         <td>${appointment.reason || 'N/A'}</td>
-        <td><span class="status-badge status-${appointment.status.toLowerCase()}">${appointment.status}</span></td>
+        <td><span class="status-badge status-${(appointment.status || '').toLowerCase()}">${appointment.status || 'N/A'}</span></td>
       </tr>
     `;
     tbody.innerHTML += row;
@@ -106,22 +125,24 @@ function displayTodayAppointments(appointments) {
 }
 
 function displayAllAppointments(appointments) {
-  const tbody = document.querySelector('#allAppointmentsTable tbody');
+  const container = document.getElementById('allAppointmentsTable');
+  const tbody = container ? container.querySelector('tbody') : null;
+  if (!tbody) return;
   tbody.innerHTML = '';
 
   if (appointments.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No appointments found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888;">No appointments found</td></tr>';
     return;
   }
 
   appointments.forEach(appointment => {
     const row = `
       <tr>
-        <td>${appointment.patientName}</td>
+        <td>${appointment.patientName || 'N/A'}</td>
         <td>${new Date(appointment.date).toLocaleDateString()}</td>
-        <td>${appointment.time}</td>
+        <td>${appointment.time || 'N/A'}</td>
         <td>${appointment.reason || 'N/A'}</td>
-        <td><span class="status-badge status-${appointment.status.toLowerCase()}">${appointment.status}</span></td>
+        <td><span class="status-badge status-${(appointment.status || '').toLowerCase()}">${appointment.status || 'N/A'}</span></td>
       </tr>
     `;
     tbody.innerHTML += row;
@@ -136,8 +157,9 @@ async function loadPatientRecords() {
     displayPatientRecords(records);
 
     // Update stats
-    const uniquePatients = new Set(records.map(r => r.patient._id)).size;
-    document.getElementById('patientsSeenCount').textContent = uniquePatients;
+    const uniquePatients = new Set(records.filter(r => r.patient).map(r => r.patient._id)).size;
+    const patientsSeenEl = document.getElementById('patientsSeenCount');
+    if (patientsSeenEl) patientsSeenEl.textContent = uniquePatients;
   } catch (error) {
     console.error('Error loading patient records:', error);
   }
@@ -145,25 +167,24 @@ async function loadPatientRecords() {
 
 function displayPatientRecords(records) {
   const container = document.getElementById('medicalRecordsContainer');
+  if (!container) return;
   container.innerHTML = '';
 
   if (records.length === 0) {
-    container.innerHTML = '<p style="text-align:center;color:#666;">No medical records found</p>';
+    container.innerHTML = '<p style="text-align:center;color:#888;padding:20px;">No medical records found</p>';
     return;
   }
 
   records.forEach(record => {
     const card = `
-      <div class="record-card">
-        <div class="record-header">
-          <h4>${record.patient.name}</h4>
-          <span class="record-date">${new Date(record.visitDate).toLocaleDateString()}</span>
+      <div class="record-card" style="background:#fff;border-radius:10px;padding:20px;margin-bottom:15px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+          <h4 style="margin:0;">${record.patient ? record.patient.name : 'Unknown Patient'}</h4>
+          <span style="color:#888;font-size:0.9em;">${new Date(record.visitDate || record.createdAt).toLocaleDateString()}</span>
         </div>
-        <div class="record-body">
-          <p><strong>Diagnosis:</strong> ${record.diagnosis}</p>
-          <p><strong>Prescription:</strong> ${record.prescription}</p>
-          ${record.notes ? `<p><strong>Notes:</strong> ${record.notes}</p>` : ''}
-        </div>
+        <p><strong>Diagnosis:</strong> ${record.diagnosis || 'N/A'}</p>
+        <p><strong>Prescription:</strong> ${record.prescription || 'N/A'}</p>
+        ${record.notes ? `<p><strong>Notes:</strong> ${record.notes}</p>` : ''}
       </div>
     `;
     container.innerHTML += card;
@@ -172,13 +193,12 @@ function displayPatientRecords(records) {
 
 // ==================== ADD MEDICAL RECORD ====================
 
-// Get all patients for the dropdown
 async function loadPatientsForRecord() {
   try {
     const patients = await API.users.getAll('patient');
     const select = document.getElementById('recordPatient');
+    if (!select) return;
     select.innerHTML = '<option value="">Select Patient</option>';
-
     patients.forEach(patient => {
       select.innerHTML += `<option value="${patient._id}">${patient.name} - ${patient.email}</option>`;
     });
@@ -187,13 +207,12 @@ async function loadPatientsForRecord() {
   }
 }
 
-// Open add record modal
 document.getElementById('addRecordBtn')?.addEventListener('click', () => {
-  document.getElementById('addRecordModal').style.display = 'flex';
+  const modal = document.getElementById('addRecordModal');
+  if (modal) modal.style.display = 'flex';
   loadPatientsForRecord();
 });
 
-// Add Medical Record
 document.getElementById('recordForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
 
@@ -222,13 +241,11 @@ document.querySelectorAll('.close-modal').forEach(btn => {
   });
 });
 
-// Close modal on outside click
 window.addEventListener('click', (e) => {
   if (e.target.classList.contains('modal')) {
     e.target.style.display = 'none';
   }
 });
 
-// ==================== INITIALIZATION ====================
-
+// ==================== START ====================
 initDoctor();
